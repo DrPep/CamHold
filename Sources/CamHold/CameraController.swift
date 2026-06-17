@@ -265,20 +265,35 @@ final class CameraController {
     /// capture cards) so we don't regress non-Sony hardware. Pure function so
     /// the §9e kick can compare it against the live `activeFormat`.
     private func chosenFormat(for device: AVCaptureDevice) -> AVCaptureDevice.Format? {
-        if prefs.forceUncompressed {
-            return FormatSelector.bestUncompressedFormat(for: device)
-                ?? FormatSelector.bestFormat(for: device)
+        FormatSelector.dumpFormats(of: device) // one-time diagnostic per device
+        let criteria = FormatSelector.Criteria(targetAspect: prefs.targetAspectRatio,
+                                               maxHeight: prefs.preferredMaxHeight)
+        let best = FormatSelector.bestFormat(for: device, criteria: criteria)
+        guard prefs.forceUncompressed,
+              let uncompressed = FormatSelector.bestUncompressedFormat(for: device, criteria: criteria) else {
+            return best
         }
-        return FormatSelector.bestFormat(for: device)
+        // Only commit to the raw pipeline if it isn't a big resolution
+        // downgrade. Over USB 2.0 the ZV-E10's uncompressed formats are
+        // bandwidth-capped (often 480p/4:3); falling to one of those is what
+        // made the feed look low-res. If the best uncompressed format is below
+        // the floor, keep the higher-res correctly-shaped format instead.
+        let h = CMVideoFormatDescriptionGetDimensions(uncompressed.formatDescription).height
+        return h >= Int32(prefs.minUncompressedHeight) ? uncompressed : best
     }
 
     private func applyBestFormat(to device: AVCaptureDevice) throws {
         guard let best = chosenFormat(for: device) else { return }
         try device.lockForConfiguration()
         device.activeFormat = best
-        if let maxRange = best.videoSupportedFrameRateRanges.max(by: { $0.maxFrameRate < $1.maxFrameRate }) {
-            device.activeVideoMinFrameDuration = maxRange.minFrameDuration
-            device.activeVideoMaxFrameDuration = maxRange.minFrameDuration
+        // Pin to the fps cap (default 60), not the format's advertised max —
+        // a format that supports 120/240fps would otherwise commit the device
+        // to that rate for no benefit. Clamp the cap into the chosen range.
+        if let range = best.videoSupportedFrameRateRanges.max(by: { $0.maxFrameRate < $1.maxFrameRate }) {
+            let desired = min(range.maxFrameRate, max(range.minFrameRate, Double(prefs.fpsCap)))
+            let duration = CMTime(value: 1, timescale: Int32(desired.rounded()))
+            device.activeVideoMinFrameDuration = duration
+            device.activeVideoMaxFrameDuration = duration
         }
         device.unlockForConfiguration()
     }

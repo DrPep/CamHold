@@ -9,6 +9,10 @@ final class Preferences {
         static let autoHoldEnabled = "autoHoldEnabled"
         static let forceUncompressed = "forceUncompressed"
         static let persistAutoHold = "persistAutoHold"
+        static let minUncompressedHeight = "minUncompressedHeight"
+        static let targetAspectRatio = "targetAspectRatio"
+        static let preferredMaxHeight = "preferredMaxHeight"
+        static let fpsCap = "fpsCap"
     }
 
     /// Default watched bundles. Slack is the canonical §9d target.
@@ -84,6 +88,54 @@ final class Preferences {
     var persistAutoHold: Bool {
         get { defaults.bool(forKey: Keys.persistAutoHold) } // default false
         set { defaults.set(newValue, forKey: Keys.persistAutoHold) }
+    }
+
+    /// Minimum frame height (px) an uncompressed format must meet before the
+    /// §7 force-uncompressed path will commit to it. Below this we keep the
+    /// best correctly-shaped format (which may be MJPEG) rather than dropping
+    /// to a bandwidth-capped low-res raw format. Default 720 (the §12 sweet
+    /// spot). Override via `defaults write … minUncompressedHeight -int N`.
+    var minUncompressedHeight: Int {
+        get {
+            if defaults.object(forKey: Keys.minUncompressedHeight) == nil { return 720 }
+            return defaults.integer(forKey: Keys.minUncompressedHeight)
+        }
+        set { defaults.set(newValue, forKey: Keys.minUncompressedHeight) }
+    }
+
+    /// Display aspect ratio the format selector steers toward. Defaults to
+    /// 16:9 — what Slack/Zoom/Teams present — so square or portrait sensor
+    /// crops (e.g. the MacBook camera's 1552×1552) are never chosen. Override
+    /// for a 4:3 camera via `defaults write … targetAspectRatio -float 1.333`.
+    var targetAspectRatio: Double {
+        get {
+            let v = defaults.double(forKey: Keys.targetAspectRatio)
+            return v > 0 ? v : FormatSelector.defaultTargetAspect
+        }
+        set { defaults.set(newValue, forKey: Keys.targetAspectRatio) }
+    }
+
+    /// Resolution ceiling for format selection (frame height, px). We pick the
+    /// highest correctly-shaped format at or below this. Default 1080 — calls
+    /// downscale to ~720p anyway, so forcing 4K just wastes USB bandwidth and
+    /// CPU. Override via `defaults write … preferredMaxHeight -int 1440`.
+    var preferredMaxHeight: Int {
+        get {
+            if defaults.object(forKey: Keys.preferredMaxHeight) == nil { return 1080 }
+            return defaults.integer(forKey: Keys.preferredMaxHeight)
+        }
+        set { defaults.set(newValue, forKey: Keys.preferredMaxHeight) }
+    }
+
+    /// Frame-rate ceiling (fps) the active format is pinned to. Default 60 —
+    /// smooth without committing the device to 120/240fps capture it advertises
+    /// but Slack never uses. Override via `defaults write … fpsCap -int 30`.
+    var fpsCap: Int {
+        get {
+            if defaults.object(forKey: Keys.fpsCap) == nil { return 60 }
+            return defaults.integer(forKey: Keys.fpsCap)
+        }
+        set { defaults.set(newValue, forKey: Keys.fpsCap) }
     }
 
     func addWatchedBundleID(_ id: String) {
