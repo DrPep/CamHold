@@ -73,7 +73,12 @@ swiftc \
   Sources/CamHold/NoopVideoOutput.swift \
   Sources/CamHold/CameraController.swift \
   Sources/CamHold/StatusItemController.swift \
-  -framework AppKit -framework AVFoundation -framework CoreMedia
+  Sources/CamHold/CMIODevice.swift \
+  Sources/CamHold/CMIORunningListener.swift \
+  Sources/CamHold/BundleProcessProbe.swift \
+  Sources/CamHold/WorkspaceAppObserver.swift \
+  Sources/CamHold/AutoHoldCoordinator.swift \
+  -framework AppKit -framework AVFoundation -framework CoreMedia -framework CoreMediaIO
 
 cp Sources/CamHold/Resources/Info.plist "$APP_DIR/Contents/Info.plist"
 

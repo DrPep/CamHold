@@ -1,6 +1,6 @@
 cask "camhold" do
   version "1.0"
-  sha256 "c1b63371a74d1703b00d744f5dc051dbc72a8fc41632c6cfc48874a381e5a8d4"
+  sha256 "f4638ab21a8b3b6f6262504560e02f841ed7fe790e28042b255b33dcabc2eeb4"
 
   url "https://github.com/YOUR_GH_USER/CamHold/releases/download/v#{version}/CamHold-#{version}.dmg"
   name "CamHold"
