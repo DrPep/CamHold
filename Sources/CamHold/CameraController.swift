@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import CamHoldObjC
 
 final class CameraController {
     /// Why the session is running (or was last asked to run). The auto-hold
@@ -285,17 +286,47 @@ final class CameraController {
     private func applyBestFormat(to device: AVCaptureDevice) throws {
         guard let best = chosenFormat(for: device) else { return }
         try device.lockForConfiguration()
-        device.activeFormat = best
-        // Pin to the fps cap (default 60), not the format's advertised max —
-        // a format that supports 120/240fps would otherwise commit the device
-        // to that rate for no benefit. Clamp the cap into the chosen range.
-        if let range = best.videoSupportedFrameRateRanges.max(by: { $0.maxFrameRate < $1.maxFrameRate }) {
-            let desired = min(range.maxFrameRate, max(range.minFrameRate, Double(prefs.fpsCap)))
-            let duration = CMTime(value: 1, timescale: Int32(desired.rounded()))
+        defer { device.unlockForConfiguration() }
+        // `activeFormat` and the frame-duration setters raise Objective-C
+        // NSExceptions on some devices (e.g. AVCaptureDevice_Tundra rejects
+        // setActiveVideoMinFrameDuration as "Not Supported"). Swift can't catch
+        // those, so route them through the shim and degrade gracefully instead
+        // of crashing.
+        if let err = CamHoldRunCatching({ device.activeFormat = best }) {
+            NSLog("CamHold: could not set activeFormat on \(device.localizedName): \(err.localizedDescription)")
+            return
+        }
+        pinFrameRate(of: device, format: best, cap: prefs.fpsCap)
+    }
+
+    /// Pin the active frame duration to the highest rate the chosen format
+    /// supports at or below `cap` (default 60), so we don't commit the device
+    /// to a wasteful 120/240fps capture. Best-effort: devices that reject
+    /// frame-duration control are logged and left at their default rate rather
+    /// than crashing.
+    private func pinFrameRate(of device: AVCaptureDevice,
+                              format: AVCaptureDevice.Format,
+                              cap: Int) {
+        let ranges = format.videoSupportedFrameRateRanges
+        guard !ranges.isEmpty else { return }
+        let capFPS = Double(cap)
+        // Highest achievable rate ≤ cap; if every range is above the cap, take
+        // the lowest rate the format offers.
+        var rate = 0.0
+        for r in ranges {
+            if r.maxFrameRate <= capFPS { rate = max(rate, r.maxFrameRate) }
+            else if r.minFrameRate <= capFPS { rate = max(rate, capFPS) } // cap sits inside this range
+        }
+        if rate <= 0 { rate = ranges.map(\.minFrameRate).min() ?? 0 }
+        guard rate > 0 else { return }
+
+        let duration = CMTime(value: 1, timescale: Int32(rate.rounded()))
+        if let err = CamHoldRunCatching({
             device.activeVideoMinFrameDuration = duration
             device.activeVideoMaxFrameDuration = duration
+        }) {
+            NSLog("CamHold: frame-rate pin unsupported on \(device.localizedName) (rate \(rate)): \(err.localizedDescription)")
         }
-        device.unlockForConfiguration()
     }
 }
 
