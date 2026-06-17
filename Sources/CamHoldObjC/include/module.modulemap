@@ -1,0 +1,4 @@
+module CamHoldObjC {
+    header "CamHoldObjC.h"
+    export *
+}

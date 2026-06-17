@@ -60,11 +60,23 @@ echo "Using target: $TARGET"
 rm -rf "$BUILD_DIR"
 mkdir -p "$MACOS_DIR" "$RES_DIR"
 
+# Compile the Objective-C exception shim, then expose its Clang module to
+# swiftc via -I (the include dir carries module.modulemap) and link the object.
+OBJC_OBJ="$BUILD_DIR/CamHoldObjC.o"
+clang -c -fobjc-arc \
+  -isysroot "$SDK" \
+  -target "$TARGET" \
+  -ISources/CamHoldObjC/include \
+  Sources/CamHoldObjC/CamHoldObjC.m \
+  -o "$OBJC_OBJ"
+
 swiftc \
   -sdk "$SDK" \
   -target "$TARGET" \
   -O \
+  -ISources/CamHoldObjC/include \
   -o "$MACOS_DIR/$APP_NAME" \
+  "$OBJC_OBJ" \
   Sources/CamHold/main.swift \
   Sources/CamHold/AppDelegate.swift \
   Sources/CamHold/Preferences.swift \
